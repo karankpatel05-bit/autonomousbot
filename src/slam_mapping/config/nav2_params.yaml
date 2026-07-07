@@ -34,7 +34,7 @@ amcl:
 
     # Odometry model — differential drive
     odom_model_type: diff-corrected
-    robot_model_type: differential
+    robot_model_type: nav2_amcl::DifferentialMotionModel
     alpha1: 0.2               # rotation noise from rotation
     alpha2: 0.2               # rotation noise from translation
     alpha3: 0.2               # translation noise from translation
