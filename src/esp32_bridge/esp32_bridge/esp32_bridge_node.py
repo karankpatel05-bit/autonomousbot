@@ -174,6 +174,15 @@ class ESP32BridgeNode(Node):
         except serial.SerialException as exc:
             self.get_logger().error(f'Serial write error: {exc}')
 
+        # Throttled debug — log once per second when receiving nonzero commands
+        if abs(v) > 0.001 or abs(omega) > 0.001:
+            now_mono = time.monotonic()
+            if not hasattr(self, '_last_cmd_log') or (now_mono - self._last_cmd_log) >= 1.0:
+                self._last_cmd_log = now_mono
+                self.get_logger().info(
+                    f'[CMD] v={v:+.3f} ω={omega:+.3f} → serial: {cmd.strip()}'
+                )
+
         with self._lock:
             self._last_cmd_t = time.monotonic()
 
