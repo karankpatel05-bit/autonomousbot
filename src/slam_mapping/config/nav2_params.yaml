@@ -48,8 +48,9 @@ amcl:
     tf_broadcast: true
     transform_tolerance: 0.5
 
-    # Initial pose (can be set in RViz instead)
-    set_initial_pose: false
+    # Initial pose — initialize at (0,0) automatically on startup
+    set_initial_pose: true
+    initial_pose: {x: 0.0, y: 0.0, z: 0.0, yaw: 0.0}
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  Map Server — serves the saved map
