@@ -137,12 +137,7 @@ class ESP32BridgeNode(Node):
         self._last_cmd_t    = time.monotonic()
 
         # ── ROS I/O ───────────────────────────────────────────────────────────
-        qos = QoSProfile(
-            depth=10,
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            history=HistoryPolicy.KEEP_LAST,
-        )
-        self._odom_pub = self.create_publisher(Odometry, '/odom', qos)
+        self._odom_pub = self.create_publisher(Odometry, '/odom', 10)
         self._tf_bcast = tf2_ros.TransformBroadcaster(self)
         self._cmd_sub  = self.create_subscription(
             Twist, '/cmd_vel', self._cmd_cb, 10
