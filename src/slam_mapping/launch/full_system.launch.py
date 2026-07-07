@@ -68,14 +68,9 @@ def generate_launch_description():
         ),
 
         # ── 2. Static TF: odom → base_footprint ──────────────────────────────
-        # SLAM Toolbox overrides this once it starts; needed as early placeholder.
-        Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name='static_tf_odom_base',
-            output='screen',
-            arguments=['0','0','0','0','0','0','1','odom','base_footprint'],
-        ),
+        # REMOVED: The esp32_bridge_node publishes this dynamically from
+        # encoder odometry. A static publisher here would fight the dynamic
+        # one and cause TF flicker / incorrect odometry.
 
         # ── 3. Static TF: base_footprint → laser ─────────────────────────────
         # Adjust z=0.1 if LiDAR is mounted 10 cm above robot base.

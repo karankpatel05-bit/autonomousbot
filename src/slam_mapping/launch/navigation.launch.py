@@ -163,7 +163,7 @@ def generate_launch_description():
             name='controller_server',
             output='screen',
             parameters=[nav2_yaml],
-            remappings=[('/cmd_vel', '/cmd_vel')],
+            remappings=[('/cmd_vel', '/cmd_vel_nav')],
         ),
 
         # ── 8. Nav2 Smoother Server ──────────────────────────────────────────
@@ -194,6 +194,8 @@ def generate_launch_description():
         ),
 
         # ── 11. Nav2 Velocity Smoother ───────────────────────────────────────
+        # Input:  /cmd_vel_nav (from controller_server)
+        # Output: /cmd_vel     (to ESP32 bridge motor driver)
         Node(
             package='nav2_velocity_smoother',
             executable='velocity_smoother',
@@ -201,6 +203,7 @@ def generate_launch_description():
             output='screen',
             parameters=[nav2_yaml],
             remappings=[
+                ('/cmd_vel', '/cmd_vel_nav'),
                 ('/cmd_vel_smoothed', '/cmd_vel'),
             ],
         ),

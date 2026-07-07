@@ -42,7 +42,6 @@ import time
 
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 from geometry_msgs.msg import Twist, TransformStamped
 from nav_msgs.msg import Odometry
@@ -272,17 +271,16 @@ class ESP32BridgeNode(Node):
         if (time.monotonic() - self._last_cmd_t) > self.cmd_to:
             self._send_stop()
 
-        # ── Snapshot ticks ───────────────────────────────────────────────────
+        # ── Snapshot ticks (compute deltas inside lock to avoid race) ────────
         with self._lock:
             if not self._enc_ready:
                 return
             cur_l = self._ticks_l
             cur_r = self._ticks_r
-
-        delta_l = cur_l - self._prev_l
-        delta_r = cur_r - self._prev_r
-        self._prev_l = cur_l
-        self._prev_r = cur_r
+            delta_l = cur_l - self._prev_l
+            delta_r = cur_r - self._prev_r
+            self._prev_l = cur_l
+            self._prev_r = cur_r
 
         # ── Time delta ───────────────────────────────────────────────────────
         now = self.get_clock().now()
@@ -374,7 +372,10 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        try:
+            rclpy.shutdown()
+        except Exception:
+            pass  # already shut down by signal handler
 
 
 if __name__ == '__main__':

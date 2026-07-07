@@ -3,10 +3,10 @@ slam_toolbox:
     use_sim_time: false
 
     # ── Odometry ──────────────────────────────────────────────────────────────
-    # Set to false for pure LiDAR scan-matching (no wheel odom required).
-    # Set to true once ESP32 bridge is running and /odom is being published.
-    use_odometry: false
-    provide_odom_frame: true
+    # ESP32 bridge publishes /odom and the odom→base_footprint TF,
+    # so SLAM Toolbox should USE that odometry for better scan matching.
+    use_odometry: true
+    provide_odom_frame: false
 
     # ── Coordinate frames ────────────────────────────────────────────────────
     map_frame:  map
@@ -58,4 +58,3 @@ slam_toolbox:
     # ── Resolution ───────────────────────────────────────────────────────────
     resolution: 0.05              # map cell size in metres (5 cm)
     max_laser_range: 12.0
-    minimum_time_interval: 0.0
