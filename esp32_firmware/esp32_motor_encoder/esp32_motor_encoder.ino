@@ -1,10 +1,8 @@
 /*
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  SMALLBOT — ESP32 Firmware  (v3 — MOTOR SELF-TEST + DEBOUNCE)      ║
+ * ║  SMALLBOT — ESP32 Firmware  (PID + DEBOUNCED ENCODERS)              ║
  * ╠══════════════════════════════════════════════════════════════════════╣
- * ║  • ISR debouncing for noisy encoder pins 34/35                      ║
- * ║  • Startup motor self-test (brief spin to verify hardware)          ║
- * ║  • Serial echo of received commands for debugging                   ║
+ * ║  RISING edge interrupts with 200µs debounce for noisy pins 34/35   ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
@@ -28,19 +26,28 @@
 #define STATUS_LED  2   
 
 // ═══════════════════════════════════════════════════════════════════════
+//  LEDC (hardware PWM)
+// ═══════════════════════════════════════════════════════════════════════
+#define LEDC_FREQ       20000   
+#define LEDC_RES        8       
+#define LEDC_CH_L       0       
+#define LEDC_CH_R       1       
+
+// ═══════════════════════════════════════════════════════════════════════
 //  HARDWARE CONSTANTS
 // ═══════════════════════════════════════════════════════════════════════
 const float TPR_L       = 349.0f;
 const float TPR_R       = 362.0f;
 const float WHEEL_DIA   = 0.043f;  
 const float WHEEL_BASE  = 0.140f;  
+
 const float WHEEL_CIRC  = PI * WHEEL_DIA; 
 
 const int   PWM_MIN     = 55;      
 const int   PWM_MAX     = 255;     
 
 // ═══════════════════════════════════════════════════════════════════════
-//  ENCODER STATE  (with ISR debouncing)
+//  ENCODER STATE  (with ISR debouncing for noisy pins 34/35)
 // ═══════════════════════════════════════════════════════════════════════
 volatile int32_t enc_left  = 0;
 volatile int32_t enc_right = 0;
@@ -65,7 +72,7 @@ void IRAM_ATTR isrRight() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  PID CONTROLLER
+//  PID CONTROLLER VARIABLES
 // ═══════════════════════════════════════════════════════════════════════
 const float Kp = 1.5f; 
 const float Ki = 0.2f; 
@@ -73,78 +80,42 @@ const float Ki = 0.2f;
 float error_sum_L = 0;
 float error_sum_R = 0;
 
-float target_speed_L = 0;
-float target_speed_R = 0;
+float target_speed_L = 0; // m/s
+float target_speed_R = 0; // m/s
 
 // ═══════════════════════════════════════════════════════════════════════
-//  MOTOR DRIVER
+//  MOTOR DRIVER INTERFACE
 // ═══════════════════════════════════════════════════════════════════════
-
-// PWM write helper — handles both old (channel) and new (pin) LEDC API
-void writePWM_L(int pwm) {
-  #if ESP_ARDUINO_VERSION_MAJOR >= 3
-    ledcWrite(L_ENA, pwm);
-  #else
-    ledcWrite(0, pwm);
-  #endif
-}
-
-void writePWM_R(int pwm) {
-  #if ESP_ARDUINO_VERSION_MAJOR >= 3
-    ledcWrite(R_ENB, pwm);
-  #else
-    ledcWrite(1, pwm);
-  #endif
-}
-
 void motorInit() {
   pinMode(L_IN1, OUTPUT); pinMode(L_IN2, OUTPUT);
   pinMode(R_IN3, OUTPUT); pinMode(R_IN4, OUTPUT);
   
-  // Stop motors first
+  ledcSetup(LEDC_CH_L, LEDC_FREQ, LEDC_RES);
+  ledcSetup(LEDC_CH_R, LEDC_FREQ, LEDC_RES);
+  ledcAttachPin(L_ENA, LEDC_CH_L);
+  ledcAttachPin(R_ENB, LEDC_CH_R);
+  
+  ledcWrite(LEDC_CH_L, 0); 
+  ledcWrite(LEDC_CH_R, 0);
+  
   digitalWrite(L_IN1, LOW); digitalWrite(L_IN2, LOW);
   digitalWrite(R_IN3, LOW); digitalWrite(R_IN4, LOW);
-  
-  #if ESP_ARDUINO_VERSION_MAJOR >= 3
-    // ESP32 Arduino Core v3.x: pin-based API
-    ledcAttach(L_ENA, 20000, 8);
-    ledcAttach(R_ENB, 20000, 8);
-  #else
-    // ESP32 Arduino Core v2.x: channel-based API
-    ledcSetup(0, 20000, 8);
-    ledcSetup(1, 20000, 8);
-    ledcAttachPin(L_ENA, 0);
-    ledcAttachPin(R_ENB, 1);
-  #endif
-  
-  writePWM_L(0);
-  writePWM_R(0);
 }
 
-void stopAll() {
-  digitalWrite(L_IN1, LOW); digitalWrite(L_IN2, LOW);
-  digitalWrite(R_IN3, LOW); digitalWrite(R_IN4, LOW);
-  writePWM_L(0);
-  writePWM_R(0);
-}
-
-void applyPower(int in1, int in2, bool isLeft, int pwm) {
+void applyPower(int in1, int in2, int channel, int pwm) {
   if (pwm > 0) {
     digitalWrite(in1, HIGH); digitalWrite(in2, LOW);
   } else if (pwm < 0) {
     digitalWrite(in1, LOW);  digitalWrite(in2, HIGH);
   } else {
     digitalWrite(in1, LOW);  digitalWrite(in2, LOW);
-    if (isLeft) writePWM_L(0); else writePWM_R(0);
-    return;
   }
   
   int final_pwm = abs(pwm);
-  if (final_pwm < PWM_MIN) final_pwm = PWM_MIN;
+  if (final_pwm > 0 && final_pwm < PWM_MIN) final_pwm = PWM_MIN;
   if (final_pwm > PWM_MAX) final_pwm = PWM_MAX;
   
-  if (isLeft) writePWM_L(final_pwm);
-  else        writePWM_R(final_pwm);
+  ledcWrite(channel, final_pwm);
 }
 
 void setTargetVelocities(float v, float omega) {
@@ -153,18 +124,16 @@ void setTargetVelocities(float v, float omega) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SERIAL PARSING
+//  SERIAL PARSING & COMMAND TIMEOUT
 // ═══════════════════════════════════════════════════════════════════════
 uint32_t last_cmd_ms = 0;
 const uint32_t CMD_TIMEOUT_MS = 500;   
 String serial_buf = "";
-bool got_first_cmd = false;
 
 void parseSerial() {
   while (Serial.available()) {
     char c = (char)Serial.read();
     if (c == '\n') {
-      serial_buf.trim();
       if (serial_buf.length() >= 3 && serial_buf[0] == 'C' && serial_buf[1] == ':') {
         int comma = serial_buf.indexOf(',', 2);
         if (comma > 2) {
@@ -172,17 +141,7 @@ void parseSerial() {
           float omega = serial_buf.substring(comma + 1).toFloat();
           setTargetVelocities(v, omega);
           last_cmd_ms = millis();
-          got_first_cmd = true;
           digitalWrite(STATUS_LED, !digitalRead(STATUS_LED));
-          // Debug echo — prints "D:" lines (ignored by ROS bridge which only parses "E:")
-          Serial.print("D:CMD v=");
-          Serial.print(v, 4);
-          Serial.print(" w=");
-          Serial.print(omega, 4);
-          Serial.print(" tL=");
-          Serial.print(target_speed_L, 4);
-          Serial.print(" tR=");
-          Serial.println(target_speed_R, 4);
         }
       } else if (serial_buf.length() > 0 && serial_buf[0] == 'R') {
         noInterrupts(); enc_left = 0; enc_right = 0; interrupts();
@@ -198,56 +157,28 @@ void parseSerial() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  MOTOR SELF-TEST  (runs once at startup to verify hardware)
-// ═══════════════════════════════════════════════════════════════════════
-void motorSelfTest() {
-  Serial.println("D:SELF-TEST: Left motor forward...");
-  digitalWrite(L_IN1, HIGH); digitalWrite(L_IN2, LOW);
-  writePWM_L(100);
-  delay(300);
-  stopAll();
-  delay(200);
-
-  Serial.println("D:SELF-TEST: Right motor forward...");
-  digitalWrite(R_IN3, HIGH); digitalWrite(R_IN4, LOW);
-  writePWM_R(100);
-  delay(300);
-  stopAll();
-  delay(200);
-
-  Serial.println("D:SELF-TEST: Complete");
-}
-
-// ═══════════════════════════════════════════════════════════════════════
 //  SETUP
 // ═══════════════════════════════════════════════════════════════════════
 void setup() {
-  Serial.begin(115200);
-  delay(100);
-  
   pinMode(STATUS_LED, OUTPUT); digitalWrite(STATUS_LED, LOW);
   motorInit();
 
   pinMode(ENC_L_A, INPUT); 
   pinMode(ENC_L_B, INPUT);
+  
   pinMode(ENC_R_A, INPUT_PULLUP);
   pinMode(ENC_R_B, INPUT_PULLUP);
   
   attachInterrupt(digitalPinToInterrupt(ENC_L_A), isrLeft,  RISING);
   attachInterrupt(digitalPinToInterrupt(ENC_R_A), isrRight, RISING);
 
+  Serial.begin(115200);
+
   for (int i = 0; i < 3; i++) {
     digitalWrite(STATUS_LED, HIGH); delay(150);
     digitalWrite(STATUS_LED, LOW);  delay(150);
   }
-  
-  Serial.println("SMALLBOT PID v3 READY");
-  
-  // Self-test: briefly spin each motor so user can verify hardware
-  motorSelfTest();
-  
-  // Set timestamp to NOW so timeout doesn't fire before first command
-  last_cmd_ms = millis();
+  Serial.println("SMALLBOT PID READY");
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -262,16 +193,15 @@ int32_t prev_ticks_R = 0;
 void loop() {
   parseSerial();
 
-  // Command timeout — only after first command received
-  if (got_first_cmd && (millis() - last_cmd_ms) > CMD_TIMEOUT_MS) {
+  if ((millis() - last_cmd_ms) > CMD_TIMEOUT_MS) {
     target_speed_L = 0.0f;
     target_speed_R = 0.0f;
   }
 
   uint32_t now = millis();
   if ((now - last_loop_ms) < LOOP_PERIOD_MS) return;
-  
-  float dt = (now - last_loop_ms) / 1000.0f;
+
+  float dt = (now - last_loop_ms) / 1000.0f; 
   last_loop_ms = now;
 
   noInterrupts();
@@ -287,28 +217,24 @@ void loop() {
   float current_speed_L = (delta_L / TPR_L) * WHEEL_CIRC / dt;
   float current_speed_R = (delta_R / TPR_R) * WHEEL_CIRC / dt;
 
-  // PID for left motor
-  if (abs(target_speed_L) < 0.001f) {
-    applyPower(L_IN1, L_IN2, true, 0);
+  if (abs(target_speed_L) < 0.001) {
+    applyPower(L_IN1, L_IN2, LEDC_CH_L, 0);
     error_sum_L = 0; 
   } else {
     float error_L = target_speed_L - current_speed_L;
     error_sum_L += error_L * dt;
-    error_sum_L = constrain(error_sum_L, -50.0f, 50.0f);
     float pwm_L = (target_speed_L * 400.0f) + (Kp * error_L) + (Ki * error_sum_L);
-    applyPower(L_IN1, L_IN2, true, (int)pwm_L);
+    applyPower(L_IN1, L_IN2, LEDC_CH_L, (int)pwm_L);
   }
 
-  // PID for right motor
-  if (abs(target_speed_R) < 0.001f) {
-    applyPower(R_IN3, R_IN4, false, 0);
+  if (abs(target_speed_R) < 0.001) {
+    applyPower(R_IN3, R_IN4, LEDC_CH_R, 0);
     error_sum_R = 0; 
   } else {
     float error_R = target_speed_R - current_speed_R;
     error_sum_R += error_R * dt;
-    error_sum_R = constrain(error_sum_R, -50.0f, 50.0f);
     float pwm_R = (target_speed_R * 400.0f) + (Kp * error_R) + (Ki * error_sum_R);
-    applyPower(R_IN3, R_IN4, false, (int)pwm_R);
+    applyPower(R_IN3, R_IN4, LEDC_CH_R, (int)pwm_R);
   }
 
   Serial.print("E:");
