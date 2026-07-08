@@ -47,17 +47,31 @@ const int   PWM_MIN     = 55;
 const int   PWM_MAX     = 255;     
 
 // ═══════════════════════════════════════════════════════════════════════
-//  ENCODER STATE
+//  ENCODER STATE  (with ISR debouncing to filter motor EMF noise)
 // ═══════════════════════════════════════════════════════════════════════
 volatile int32_t enc_left  = 0;
 volatile int32_t enc_right = 0;
 
-// Reverted direction checks back to standard logic matching RISING edge
-void IRAM_ATTR isrLeft()  { 
-  if (digitalRead(ENC_L_B) == HIGH) enc_left++; else enc_left--; 
+// Debounce: ignore interrupts that fire within 200 µs of the last one.
+// At max speed (~0.22 m/s), one tick occurs every ~800 µs, so 200 µs
+// is safe and filters out electrical noise from floating pins 34/35.
+#define ENC_DEBOUNCE_US  200
+
+volatile uint32_t last_isr_l = 0;
+volatile uint32_t last_isr_r = 0;
+
+void IRAM_ATTR isrLeft() {
+  uint32_t now = micros();
+  if ((now - last_isr_l) < ENC_DEBOUNCE_US) return;  // noise — ignore
+  last_isr_l = now;
+  if (digitalRead(ENC_L_B) == HIGH) enc_left++; else enc_left--;
 }
-void IRAM_ATTR isrRight() { 
-  if (digitalRead(ENC_R_B) == HIGH) enc_right--; else enc_right++; // Mirrored
+
+void IRAM_ATTR isrRight() {
+  uint32_t now = micros();
+  if ((now - last_isr_r) < ENC_DEBOUNCE_US) return;  // noise — ignore
+  last_isr_r = now;
+  if (digitalRead(ENC_R_B) == HIGH) enc_right--; else enc_right++;  // Mirrored
 }
 
 // ═══════════════════════════════════════════════════════════════════════
