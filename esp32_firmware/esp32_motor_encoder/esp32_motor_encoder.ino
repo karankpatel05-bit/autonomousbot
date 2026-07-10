@@ -11,12 +11,12 @@
 // ═══════════════════════════════════════════════════════════════════════
 //  PIN DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════
-#define L_IN1      27
-#define L_IN2      26
+#define L_IN1      26
+#define L_IN2      27
 #define L_ENA      25   
 
-#define R_IN3      33
-#define R_IN4      32
+#define R_IN3      32
+#define R_IN4      33
 #define R_ENB       4   
 
 #define ENC_L_A    34
@@ -103,10 +103,11 @@ void motorInit() {
 }
 
 void applyPower(int in1, int in2, int channel, int pwm) {
+  // Reversed software polarity to fix backwards movement
   if (pwm > 0) {
-    digitalWrite(in1, HIGH); digitalWrite(in2, LOW);
-  } else if (pwm < 0) {
     digitalWrite(in1, LOW);  digitalWrite(in2, HIGH);
+  } else if (pwm < 0) {
+    digitalWrite(in1, HIGH); digitalWrite(in2, LOW);
   } else {
     digitalWrite(in1, LOW);  digitalWrite(in2, LOW);
   }
