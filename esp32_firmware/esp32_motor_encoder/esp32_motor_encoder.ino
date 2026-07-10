@@ -222,8 +222,16 @@ void loop() {
     error_sum_L = 0; 
   } else {
     float error_L = target_speed_L - current_speed_L;
-    error_sum_L += error_L * dt;
-    float pwm_L = (target_speed_L * 400.0f) + (Kp * error_L) + (Ki * error_sum_L);
+    
+    // Adaptively increase integral term faster if not moving
+    float dynamic_Ki = (abs(current_speed_L) < 0.01) ? 300.0f : 100.0f;
+    error_sum_L += error_L * dynamic_Ki * dt;
+    error_sum_L = constrain(error_sum_L, -200.0f, 200.0f);
+    
+    // Start from 140 PWM and add PID
+    float stiction_L = (target_speed_L > 0) ? 140.0f : -140.0f;
+    float pwm_L = stiction_L + (150.0f * error_L) + error_sum_L;
+    
     applyPower(L_IN1, L_IN2, LEDC_CH_L, (int)pwm_L);
   }
 
@@ -232,8 +240,16 @@ void loop() {
     error_sum_R = 0; 
   } else {
     float error_R = target_speed_R - current_speed_R;
-    error_sum_R += error_R * dt;
-    float pwm_R = (target_speed_R * 400.0f) + (Kp * error_R) + (Ki * error_sum_R);
+    
+    // Adaptively increase integral term faster if not moving
+    float dynamic_Ki = (abs(current_speed_R) < 0.01) ? 300.0f : 100.0f;
+    error_sum_R += error_R * dynamic_Ki * dt;
+    error_sum_R = constrain(error_sum_R, -200.0f, 200.0f);
+    
+    // Start from 140 PWM and add PID
+    float stiction_R = (target_speed_R > 0) ? 140.0f : -140.0f;
+    float pwm_R = stiction_R + (150.0f * error_R) + error_sum_R;
+    
     applyPower(R_IN3, R_IN4, LEDC_CH_R, (int)pwm_R);
   }
 

@@ -143,14 +143,14 @@ controller_server:
       plugin: dwb_core::DWBLocalPlanner
       debug_trajectory_details: false
       # Velocity limits — tuned for SmallBot
-      min_vel_x: 0.0
+      min_vel_x: 0.04                 # Minimum forward speed to avoid stiction jitter
       min_vel_y: 0.0
       max_vel_x: 0.22                 # max forward speed m/s
       max_vel_y: 0.0                  # diff drive — no strafe
       max_vel_theta: 1.5              # max rotation rad/s
-      min_speed_xy: 0.0
+      min_speed_xy: 0.04              # Match min_vel_x
       max_speed_xy: 0.22
-      min_speed_theta: 0.0
+      min_speed_theta: 0.2            # Minimum rotational speed
       # Acceleration limits
       acc_lim_x: 0.5
       acc_lim_y: 0.0
@@ -259,7 +259,7 @@ velocity_smoother:
     max_decel:        [-0.5, 0.0, -2.0]
     odom_topic: /odom
     odom_duration: 0.1
-    deadband_velocity: [0.0, 0.0, 0.0]
+    deadband_velocity: [0.02, 0.0, 0.1] # Snap microscopic velocities to 0 to prevent jitter
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  Local Costmap — real-time obstacle detection from LiDAR
