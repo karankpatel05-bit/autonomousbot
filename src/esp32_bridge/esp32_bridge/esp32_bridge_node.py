@@ -226,7 +226,7 @@ class ESP32BridgeNode(Node):
           Any other text is logged as debug.
         """
         if not line.startswith('E:'):
-            self.get_logger().debug(f'ESP32: {line}')
+            self.get_logger().info(f'ESP32: {line}')
             return
 
         # Strip "E:" prefix then split on ','

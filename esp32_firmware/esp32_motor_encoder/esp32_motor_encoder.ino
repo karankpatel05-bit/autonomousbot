@@ -11,12 +11,12 @@
 // ═══════════════════════════════════════════════════════════════════════
 //  PIN DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════
-#define L_IN1      26
-#define L_IN2      27
+#define L_IN1      27
+#define L_IN2      26
 #define L_ENA      25   
 
-#define R_IN3      32
-#define R_IN4      33
+#define R_IN3      33
+#define R_IN4      32
 #define R_ENB       4   
 
 #define ENC_L_A    34
@@ -61,14 +61,14 @@ void IRAM_ATTR isrLeft() {
   uint32_t now = micros();
   if ((now - last_isr_l) < ENC_DEBOUNCE_US) return;
   last_isr_l = now;
-  if (digitalRead(ENC_L_B) == HIGH) enc_left++; else enc_left--;
+  if (digitalRead(ENC_L_B) == HIGH) enc_left--; else enc_left++;
 }
 
 void IRAM_ATTR isrRight() {
   uint32_t now = micros();
   if ((now - last_isr_r) < ENC_DEBOUNCE_US) return;
   last_isr_r = now;
-  if (digitalRead(ENC_R_B) == HIGH) enc_right--; else enc_right++;
+  if (digitalRead(ENC_R_B) == HIGH) enc_right++; else enc_right--;
 }
 
 // ═══════════════════════════════════════════════════════════════════════

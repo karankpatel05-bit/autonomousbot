@@ -17,7 +17,7 @@ set -e
 
 WORKSPACE=~/auto
 MAP_DIR="${WORKSPACE}/maps"
-MAP_NAME="smallbot_map"
+MAP_NAME="my_custom_map"
 MAP_PATH="${MAP_DIR}/${MAP_NAME}.yaml"
 
 # ── Colors ────────────────────────────────────────────────────────────────────

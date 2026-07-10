@@ -143,7 +143,7 @@ controller_server:
       plugin: dwb_core::DWBLocalPlanner
       debug_trajectory_details: false
       # Velocity limits — tuned for SmallBot
-      min_vel_x: 0.04                 # Minimum forward speed to avoid stiction jitter
+      min_vel_x: 0.0                  # MUST be <= 0.0 so the bot can stop!
       min_vel_y: 0.0
       max_vel_x: 0.22                 # max forward speed m/s
       max_vel_y: 0.0                  # diff drive — no strafe

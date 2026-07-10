@@ -74,7 +74,7 @@ cleanup_and_save() {
     # Save the map (overwrite any existing)
     ros2 run nav2_map_server map_saver_cli \
         -f "${MAP_PATH}" \
-        --ros-args -p save_map_timeout:=5000 2>/dev/null || true
+        --ros-args -p save_map_timeout:=5000.0 2>/dev/null || true
 
     # Give map_saver a moment to finish writing
     sleep 2
