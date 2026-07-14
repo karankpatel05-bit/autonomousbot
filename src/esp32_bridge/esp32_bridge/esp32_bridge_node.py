@@ -35,6 +35,9 @@ Parameters (all overridable from launch):
   cmd_timeout    0.5          seconds — stops motors if no /cmd_vel
   odom_frame     odom
   base_frame     base_footprint
+  linear_x_sign  -1.0         multiply linear.x by this before sending to Arduino.
+                              Set to -1.0 when physical forward = negative PWM direction.
+                              Set to +1.0 if motors are wired the other way.
 """
 
 import math
@@ -81,6 +84,11 @@ class ESP32BridgeNode(Node):
         self.declare_parameter('odom_frame',     'odom')
         self.declare_parameter('base_frame',     'base_footprint')
         self.declare_parameter('show_ticks',     True)
+        # Direction correction: set to -1.0 when the physical wiring makes
+        # positive v go backward relative to the robot's forward axis.
+        # This flips both the command sent to the Arduino AND the odometry
+        # encoder reading so that Nav2 and the real world stay in sync.
+        self.declare_parameter('linear_x_sign',  -1.0)
 
         port       = self.get_parameter('port').value
         baud       = int(self.get_parameter('baud').value)
@@ -94,6 +102,7 @@ class ESP32BridgeNode(Node):
         self.odom_fr      = self.get_parameter('odom_frame').value
         self.base_fr      = self.get_parameter('base_frame').value
         self.show_ticks   = bool(self.get_parameter('show_ticks').value)
+        self.linear_x_sign = float(self.get_parameter('linear_x_sign').value)
 
         # ── Open Serial ───────────────────────────────────────────────────────
         try:
@@ -164,7 +173,11 @@ class ESP32BridgeNode(Node):
     # ──────────────────────────────────────────────────────────────────────────
     def _cmd_cb(self, msg: Twist):
         """Forward /cmd_vel as velocity command to Arduino PID firmware."""
-        v     = float(msg.linear.x)
+        # Apply direction correction: the physical motor wiring may make
+        # positive v move the robot backward, so we negate v here.
+        # linear_x_sign = -1.0 → invert  (default — fixes Nav2 going backward)
+        # linear_x_sign = +1.0 → pass through unchanged
+        v     = float(msg.linear.x) * self.linear_x_sign
         omega = float(msg.angular.z)
 
         # The Arduino firmware computes differential drive internally:
@@ -305,8 +318,10 @@ class ESP32BridgeNode(Node):
             return
 
         # ── Differential drive kinematics ─────────────────────────────────────
-        dist_l = (delta_l / self.TPR_L) * self.CIRC
-        dist_r = (delta_r / self.TPR_R) * self.CIRC
+        # Apply the same sign correction to encoder distances so that the
+        # odometry pose tracks the physical forward direction correctly.
+        dist_l = (delta_l / self.TPR_L) * self.CIRC * self.linear_x_sign
+        dist_r = (delta_r / self.TPR_R) * self.CIRC * self.linear_x_sign
 
         ds   = (dist_r + dist_l) / 2.0      # linear displacement
         dyaw = (dist_r - dist_l) / self.L   # heading change

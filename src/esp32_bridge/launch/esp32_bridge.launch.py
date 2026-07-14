@@ -14,6 +14,10 @@ Override measured wheel parameters if needed:
       arduino_port:=/dev/ttyUSB0 \\
       tpr_l:=349.0 tpr_r:=362.0 \\
       wheel_diameter:=0.043 wheel_base:=0.400
+
+Direction fix (default -1.0 corrects Nav2 forward → robot backward bug):
+  ros2 launch esp32_bridge esp32_bridge.launch.py linear_x_sign:=-1.0
+  Use +1.0 if motors are wired in the opposite polarity.
 """
 
 from launch import LaunchDescription
@@ -41,6 +45,8 @@ def generate_launch_description():
                               description='Odometry publish rate Hz (match Arduino 100 ms telemetry)'),
         DeclareLaunchArgument('cmd_timeout',     default_value='0.5',
                               description='Stop motors if no /cmd_vel within this many seconds'),
+        DeclareLaunchArgument('linear_x_sign',   default_value='-1.0',
+                              description='Direction correction: -1.0 = invert linear.x (fixes Nav2 going backward), +1.0 = pass through'),
     ]
 
     return LaunchDescription(args + [
@@ -62,6 +68,7 @@ def generate_launch_description():
                 'cmd_timeout':    LaunchConfiguration('cmd_timeout'),
                 'odom_frame':     'odom',
                 'base_frame':     'base_footprint',
+                'linear_x_sign':  LaunchConfiguration('linear_x_sign'),
             }],
         ),
 
