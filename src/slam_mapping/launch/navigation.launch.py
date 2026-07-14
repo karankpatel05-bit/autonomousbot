@@ -47,7 +47,7 @@ def generate_launch_description():
                               description='USB port for ESP32 SmallBot'),
         DeclareLaunchArgument('wheel_diameter',  default_value='0.043',
                               description='Wheel diameter (m)'),
-        DeclareLaunchArgument('wheel_base',      default_value='0.140',
+        DeclareLaunchArgument('wheel_base',      default_value='0.400',
                               description='Distance between wheels (m)'),
         DeclareLaunchArgument('tpr_l',           default_value='349.0',
                               description='Ticks/rev LEFT wheel'),
@@ -105,7 +105,7 @@ def generate_launch_description():
             executable='static_transform_publisher',
             name='static_tf_base_laser',
             output='screen',
-            arguments=['0.0', '0.0', '0.1', '0', '0', '0', '1',
+            arguments=['0.0', '0.0', '0.305', '0', '0', '0', '1',
                        'base_footprint', 'laser'],
         ),
 
@@ -115,7 +115,7 @@ def generate_launch_description():
             executable='static_transform_publisher',
             name='static_tf_left_wheel',
             output='screen',
-            arguments=['0.0', '0.070', '-0.0215', '0', '0', '0', '1',
+            arguments=['0.0', '0.200', '-0.0215', '0', '0', '0', '1',
                        'base_footprint', 'left_wheel'],
         ),
 
@@ -125,7 +125,7 @@ def generate_launch_description():
             executable='static_transform_publisher',
             name='static_tf_right_wheel',
             output='screen',
-            arguments=['0.0', '-0.070', '-0.0215', '0', '0', '0', '1',
+            arguments=['0.0', '-0.200', '-0.0215', '0', '0', '0', '1',
                        'base_footprint', 'right_wheel'],
         ),
 

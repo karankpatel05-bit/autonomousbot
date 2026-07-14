@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-esp32_bridge.launch.py  —  SmallBot ESP32 USB serial bridge
+esp32_bridge.launch.py  —  SmallBot Arduino USB serial bridge
 
 Protocol:
-  PC  → ESP32 :  "C:<v>,<omega>\\n"    (velocity command)
-  ESP32 → PC  :  "E:<left>,<right>\\n" (encoder ticks @ 20 Hz)
+  RPI  → Arduino :  Single char commands: 'F', 'B', 'L', 'R', 'S', '1'-'5'
+  Arduino → RPI  :  "E,<left>,<right>\\n"  (encoder ticks @ 10 Hz)
 
 Usage:
-  ros2 launch esp32_bridge esp32_bridge.launch.py [esp32_port:=/dev/ttyUSB1]
+  ros2 launch esp32_bridge esp32_bridge.launch.py [arduino_port:=/dev/ttyUSB0]
 
 Override measured wheel parameters if needed:
   ros2 launch esp32_bridge esp32_bridge.launch.py \\
-      esp32_port:=/dev/ttyUSB1 \\
+      arduino_port:=/dev/ttyUSB0 \\
       tpr_l:=349.0 tpr_r:=362.0 \\
-      wheel_diameter:=0.043 wheel_base:=0.140
+      wheel_diameter:=0.043 wheel_base:=0.400
 """
 
 from launch import LaunchDescription
@@ -25,20 +25,20 @@ from launch_ros.actions import Node
 def generate_launch_description():
 
     args = [
-        DeclareLaunchArgument('esp32_port',      default_value='/dev/ttyUSB1',
-                              description='USB port for ESP32'),
+        DeclareLaunchArgument('arduino_port',    default_value='/dev/ttyUSB0',
+                              description='USB port for Arduino Uno motor base'),
         DeclareLaunchArgument('baud',            default_value='115200',
                               description='Serial baud rate'),
         DeclareLaunchArgument('wheel_diameter',  default_value='0.043',
-                              description='Wheel diameter in metres (43 mm N20 wheel)'),
-        DeclareLaunchArgument('wheel_base',      default_value='0.140',
-                              description='Distance between left and right wheels (m)'),
+                              description='Wheel diameter in metres (43 mm wheel)'),
+        DeclareLaunchArgument('wheel_base',      default_value='0.400',
+                              description='Distance between left and right wheel centres (m)'),
         DeclareLaunchArgument('tpr_l',           default_value='349.0',
                               description='Ticks per revolution — LEFT wheel (measured)'),
         DeclareLaunchArgument('tpr_r',           default_value='362.0',
                               description='Ticks per revolution — RIGHT wheel (measured)'),
-        DeclareLaunchArgument('publish_rate',    default_value='20.0',
-                              description='Odometry publish rate Hz (match ESP32 loop = 20 Hz)'),
+        DeclareLaunchArgument('publish_rate',    default_value='10.0',
+                              description='Odometry publish rate Hz (match Arduino 100 ms telemetry)'),
         DeclareLaunchArgument('cmd_timeout',     default_value='0.5',
                               description='Stop motors if no /cmd_vel within this many seconds'),
     ]
@@ -52,7 +52,7 @@ def generate_launch_description():
             output='screen',
             emulate_tty=True,
             parameters=[{
-                'port':           LaunchConfiguration('esp32_port'),
+                'port':           LaunchConfiguration('arduino_port'),
                 'baud':           LaunchConfiguration('baud'),
                 'wheel_diameter': LaunchConfiguration('wheel_diameter'),
                 'wheel_base':     LaunchConfiguration('wheel_base'),

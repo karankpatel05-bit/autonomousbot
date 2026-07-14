@@ -39,7 +39,7 @@
 const float TPR_L       = 349.0f;
 const float TPR_R       = 362.0f;
 const float WHEEL_DIA   = 0.043f;  
-const float WHEEL_BASE  = 0.140f;  
+const float WHEEL_BASE  = 0.400f;  // wheel-centre to wheel-centre (400mm body width)
 
 const float WHEEL_CIRC  = PI * WHEEL_DIA; 
 
