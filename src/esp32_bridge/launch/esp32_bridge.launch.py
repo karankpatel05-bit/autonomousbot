@@ -16,7 +16,7 @@ Override measured wheel parameters if needed:
       wheel_diameter:=0.043 wheel_base:=0.400
 
 Direction fix (default -1.0 corrects Nav2 forward → robot backward bug):
-  ros2 launch esp32_bridge esp32_bridge.launch.py linear_x_sign:=-1.0
+  ros2 launch esp32_bridge esp32_bridge.launch.py linear_x_sign:=-1.0 angular_z_sign:=-1.0
   Use +1.0 if motors are wired in the opposite polarity.
 """
 
@@ -47,6 +47,8 @@ def generate_launch_description():
                               description='Stop motors if no /cmd_vel within this many seconds'),
         DeclareLaunchArgument('linear_x_sign',   default_value='-1.0',
                               description='Direction correction: -1.0 = invert linear.x (fixes Nav2 going backward), +1.0 = pass through'),
+        DeclareLaunchArgument('angular_z_sign',  default_value='-1.0',
+                              description='Rotation correction: -1.0 = invert angular.z (fixes Nav2 left turn -> robot right turn)'),
     ]
 
     return LaunchDescription(args + [
@@ -69,6 +71,7 @@ def generate_launch_description():
                 'odom_frame':     'odom',
                 'base_frame':     'base_footprint',
                 'linear_x_sign':  LaunchConfiguration('linear_x_sign'),
+                'angular_z_sign': LaunchConfiguration('angular_z_sign'),
             }],
         ),
 

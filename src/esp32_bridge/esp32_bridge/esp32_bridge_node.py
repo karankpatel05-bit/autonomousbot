@@ -89,6 +89,7 @@ class ESP32BridgeNode(Node):
         # This flips both the command sent to the Arduino AND the odometry
         # encoder reading so that Nav2 and the real world stay in sync.
         self.declare_parameter('linear_x_sign',  -1.0)
+        self.declare_parameter('angular_z_sign', -1.0)
 
         port       = self.get_parameter('port').value
         baud       = int(self.get_parameter('baud').value)
@@ -103,6 +104,7 @@ class ESP32BridgeNode(Node):
         self.base_fr      = self.get_parameter('base_frame').value
         self.show_ticks   = bool(self.get_parameter('show_ticks').value)
         self.linear_x_sign = float(self.get_parameter('linear_x_sign').value)
+        self.angular_z_sign = float(self.get_parameter('angular_z_sign').value)
 
         # ── Open Serial ───────────────────────────────────────────────────────
         try:
@@ -178,7 +180,7 @@ class ESP32BridgeNode(Node):
         # linear_x_sign = -1.0 → invert  (default — fixes Nav2 going backward)
         # linear_x_sign = +1.0 → pass through unchanged
         v     = float(msg.linear.x) * self.linear_x_sign
-        omega = float(msg.angular.z)
+        omega = float(msg.angular.z) * self.angular_z_sign
 
         # The Arduino firmware computes differential drive internally:
         #   wheel_speed_L = v - omega * (WHEEL_BASE / 2)
