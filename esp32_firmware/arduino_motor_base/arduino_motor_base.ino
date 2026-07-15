@@ -174,19 +174,32 @@ void loop() {
 //   Left  motor:  DIR LOW  = forward → enc_left++
 //   Right motor:  DIR HIGH = forward → enc_right++  (right motor is inverted)
 
+volatile unsigned long last_left_isr = 0;
+volatile unsigned long last_right_isr = 0;
+
 void leftEncoderISR() {
-  if (digitalRead(LEFT_DIR) == LOW) {
-    enc_left++;
-  } else {
-    enc_left--;
+  unsigned long now = micros();
+  // 500us debounce to filter out high-frequency electrical noise
+  if (now - last_left_isr > 500) {
+    if (digitalRead(LEFT_DIR) == LOW) {
+      enc_left++;
+    } else {
+      enc_left--;
+    }
+    last_left_isr = now;
   }
 }
 
 void rightEncoderISR() {
-  if (digitalRead(RIGHT_DIR) == HIGH) {
-    enc_right++;
-  } else {
-    enc_right--;
+  unsigned long now = micros();
+  // 500us debounce to filter out high-frequency electrical noise
+  if (now - last_right_isr > 500) {
+    if (digitalRead(RIGHT_DIR) == HIGH) {
+      enc_right++;
+    } else {
+      enc_right--;
+    }
+    last_right_isr = now;
   }
 }
 
