@@ -13,7 +13,7 @@ Override measured wheel parameters if needed:
   ros2 launch esp32_bridge esp32_bridge.launch.py \
       arduino_port:=/dev/ttyUSB1 \
       tpr_l:=349.0 tpr_r:=362.0 \
-      wheel_diameter:=0.043 wheel_base:=0.400
+      wheel_diameter:=0.150 wheel_base:=0.400
 
 Direction fix (default -1.0 corrects Nav2 forward → robot backward bug):
   ros2 launch esp32_bridge esp32_bridge.launch.py linear_x_sign:=-1.0 angular_z_sign:=-1.0
@@ -33,8 +33,8 @@ def generate_launch_description():
                               description='USB port for Arduino Uno motor base'),
         DeclareLaunchArgument('baud',            default_value='115200',
                               description='Serial baud rate'),
-        DeclareLaunchArgument('wheel_diameter',  default_value='0.043',
-                              description='Wheel diameter in metres (43 mm wheel)'),
+        DeclareLaunchArgument('wheel_diameter',  default_value='0.150',
+                              description='Wheel diameter in metres (150 mm wheel)'),
         DeclareLaunchArgument('wheel_base',      default_value='0.400',
                               description='Distance between left and right wheel centres (m)'),
         DeclareLaunchArgument('tpr_l',           default_value='349.0',

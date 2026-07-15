@@ -45,7 +45,7 @@ def generate_launch_description():
                               description='USB port for RPLidar A1M8'),
         DeclareLaunchArgument('esp32_port',      default_value='/dev/ttyUSB1',
                               description='USB port for ESP32 SmallBot'),
-        DeclareLaunchArgument('wheel_diameter',  default_value='0.043',
+        DeclareLaunchArgument('wheel_diameter',  default_value='0.150',
                               description='Wheel diameter (m)'),
         DeclareLaunchArgument('wheel_base',      default_value='0.400',
                               description='Distance between wheels (m)'),

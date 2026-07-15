@@ -49,7 +49,7 @@ const int RIGHT_EL  = 9;   // EL  — enable/brake
 
 const float TPR_L      = 349.0f;   // ticks / revolution — LEFT  wheel (measured)
 const float TPR_R      = 362.0f;   // ticks / revolution — RIGHT wheel (measured)
-const float WHEEL_DIA  = 0.043f;   // wheel diameter  (m)
+const float WHEEL_DIA  = 0.150f;   // wheel diameter  (m)
 const float WHEEL_BASE = 0.400f;   // wheel-centre to wheel-centre (m)
 const float WHEEL_CIRC = PI * WHEEL_DIA;  // circumference (m) ≈ 0.13509 m
 

@@ -27,7 +27,7 @@ Odometry uses SEPARATE TPR per wheel (measured values from the real robot):
 Parameters (all overridable from launch):
   port           /dev/ttyUSB0
   baud           115200
-  wheel_diameter 0.043        metres  (43 mm wheel)
+  wheel_diameter 0.150        metres  (150 mm wheel)
   wheel_base     0.400        metres  (400 mm between wheel centres)
   tpr_l          349.0        ticks/rev — LEFT  wheel (measured)
   tpr_r          362.0        ticks/rev — RIGHT wheel (measured)
@@ -75,7 +75,7 @@ class ESP32BridgeNode(Node):
         # ── Parameters ────────────────────────────────────────────────────────
         self.declare_parameter('port',           '/dev/ttyUSB1')
         self.declare_parameter('baud',           115200)
-        self.declare_parameter('wheel_diameter', 0.043)
+        self.declare_parameter('wheel_diameter', 0.150)
         self.declare_parameter('wheel_base',     0.400)   # 400 mm — new robot
         self.declare_parameter('tpr_l',          349.0)   # ticks/rev LEFT
         self.declare_parameter('tpr_r',          362.0)   # ticks/rev RIGHT
