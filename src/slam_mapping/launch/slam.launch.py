@@ -82,21 +82,22 @@ def generate_launch_description():
         ),
 
         # ── 4. Static TF: base_footprint → laser (LiDAR mount offset) ────────
-        # z=0.305 — LiDAR mounted 305 mm above base (new robot height 305mm).
+        # Adjust x/y/z/quat if the LiDAR is not centred on the robot base.
+        # Default: directly above base centre, no rotation.
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
             name='static_tf_base_laser',
             output='screen',
             arguments=[
-                '0.0', '0.0', '0.305',  # x y z  – LiDAR is 30.5 cm above base
-                '0',   '0',   '0', '1',   # qx qy qz qw – no rotation
+                '0.0', '0.0', '0.1',   # x y z  – LiDAR is 10 cm above base
+                '0',   '0',   '0', '1',  # qx qy qz qw – no rotation
                 'base_footprint', 'laser'
             ],
         ),
 
         # ── 4a. Static TF: base_footprint → left_wheel ──────────────────────
-        # Y = +0.200 m (half wheel_base, left side — 400mm wheel base)
+        # Y = +0.070 m (half wheel_base, left side)
         # Z = -0.0215 m (wheel centre below base_footprint)
         Node(
             package='tf2_ros',
@@ -104,21 +105,21 @@ def generate_launch_description():
             name='static_tf_left_wheel',
             output='screen',
             arguments=[
-                '0.0', '0.200', '-0.0215',
+                '0.0', '0.070', '-0.0215',
                 '0', '0', '0', '1',
                 'base_footprint', 'left_wheel'
             ],
         ),
 
         # ── 4b. Static TF: base_footprint → right_wheel ─────────────────────
-        # Y = -0.200 m (half wheel_base, right side — 400mm wheel base)
+        # Y = -0.070 m (half wheel_base, right side)
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
             name='static_tf_right_wheel',
             output='screen',
             arguments=[
-                '0.0', '-0.200', '-0.0215',
+                '0.0', '-0.070', '-0.0215',
                 '0', '0', '0', '1',
                 'base_footprint', 'right_wheel'
             ],

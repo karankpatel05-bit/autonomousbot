@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 """
-esp32_bridge_node.py  —  ROS 2 ↔ SmallBot Arduino serial bridge
-================================================================
+esp32_bridge_node.py  —  ROS 2 ↔ SmallBot ESP32 serial bridge
+==============================================================
 
-Serial Protocol (115200 baud, USB — NO rosserial):
+Serial Protocol (115200 baud, USB CDC — NO rosserial):
+  PC  → ESP32 :  "C:<v>,<omega>\\n"
+                   v     : linear  velocity m/s  (float)
+                   omega : angular velocity rad/s (float)
+                   The ESP32 PID loop handles wheel speed regulation.
 
-  RPI → Arduino :  "C:<v>,<omega>\\n"
-                     v     : linear  velocity m/s  (float)
-                     omega : angular velocity rad/s (float)
-                     The Arduino PID loop handles wheel speed regulation.
+  ESP32 → PC  :  "E:<left_ticks>,<right_ticks>\\n"
+                   Cumulative encoder ticks, sent at 20 Hz (every 50 ms).
 
-  Arduino → RPI :  "E,<left_ticks>,<right_ticks>\\n"
-                     Cumulative encoder ticks, sent every 100 ms.
-
-  RPI → Arduino :  "R\\n"  — reset encoder counts and PID integrators.
+  PC  → ESP32 :  "R\\n"   — reset encoder counts and PID integrators.
 
 ROS Interfaces:
   Subscribes : /cmd_vel  (geometry_msgs/Twist)
@@ -25,19 +24,16 @@ Odometry uses SEPARATE TPR per wheel (measured values from the real robot):
   dist_right = (delta_r / tpr_r) * π * wheel_diameter
 
 Parameters (all overridable from launch):
-  port           /dev/ttyUSB0
+  port           /dev/ttyUSB1
   baud           115200
-  wheel_diameter 0.150        metres  (150 mm wheel)
-  wheel_base     0.400        metres  (400 mm between wheel centres)
+  wheel_diameter 0.043        metres  (43 mm N20 wheel)
+  wheel_base     0.140        metres  (140 mm between wheels)
   tpr_l          349.0        ticks/rev — LEFT  wheel (measured)
   tpr_r          362.0        ticks/rev — RIGHT wheel (measured)
-  publish_rate   10.0         Hz  (match Arduino 100 ms telemetry)
+  publish_rate   20.0         Hz
   cmd_timeout    0.5          seconds — stops motors if no /cmd_vel
   odom_frame     odom
   base_frame     base_footprint
-  linear_x_sign  -1.0         multiply linear.x by this before sending to Arduino.
-                              Set to -1.0 when physical forward = negative PWM direction.
-                              Set to +1.0 if motors are wired the other way.
 """
 
 import math
@@ -67,7 +63,7 @@ def _quat_from_yaw(yaw: float):
 
 
 class ESP32BridgeNode(Node):
-    """ROS 2 bridge for SmallBot Arduino motor base over USB serial."""
+    """ROS 2 bridge for SmallBot ESP32 PID firmware over USB serial."""
 
     def __init__(self):
         super().__init__('esp32_bridge')
@@ -75,21 +71,15 @@ class ESP32BridgeNode(Node):
         # ── Parameters ────────────────────────────────────────────────────────
         self.declare_parameter('port',           '/dev/ttyUSB1')
         self.declare_parameter('baud',           115200)
-        self.declare_parameter('wheel_diameter', 0.150)
-        self.declare_parameter('wheel_base',     0.400)   # 400 mm — new robot
+        self.declare_parameter('wheel_diameter', 0.043)
+        self.declare_parameter('wheel_base',     0.140)
         self.declare_parameter('tpr_l',          349.0)   # ticks/rev LEFT
         self.declare_parameter('tpr_r',          362.0)   # ticks/rev RIGHT
-        self.declare_parameter('publish_rate',   10.0)    # match Arduino 100ms
+        self.declare_parameter('publish_rate',   20.0)
         self.declare_parameter('cmd_timeout',    0.5)
         self.declare_parameter('odom_frame',     'odom')
         self.declare_parameter('base_frame',     'base_footprint')
-        self.declare_parameter('show_ticks',     True)
-        # Direction correction: set to -1.0 when the physical wiring makes
-        # positive v go backward relative to the robot's forward axis.
-        # This flips both the command sent to the Arduino AND the odometry
-        # encoder reading so that Nav2 and the real world stay in sync.
-        self.declare_parameter('linear_x_sign',  -1.0)
-        self.declare_parameter('angular_z_sign', -1.0)
+        self.declare_parameter('show_ticks',     True)   # print raw ticks to terminal
 
         port       = self.get_parameter('port').value
         baud       = int(self.get_parameter('baud').value)
@@ -99,12 +89,10 @@ class ESP32BridgeNode(Node):
         self.TPR_R = float(self.get_parameter('tpr_r').value)
         self.CIRC  = math.pi * wheel_d          # wheel circumference (m)
         rate_hz    = float(self.get_parameter('publish_rate').value)
-        self.cmd_to       = float(self.get_parameter('cmd_timeout').value)
-        self.odom_fr      = self.get_parameter('odom_frame').value
-        self.base_fr      = self.get_parameter('base_frame').value
-        self.show_ticks   = bool(self.get_parameter('show_ticks').value)
-        self.linear_x_sign = float(self.get_parameter('linear_x_sign').value)
-        self.angular_z_sign = float(self.get_parameter('angular_z_sign').value)
+        self.cmd_to= float(self.get_parameter('cmd_timeout').value)
+        self.odom_fr  = self.get_parameter('odom_frame').value
+        self.base_fr  = self.get_parameter('base_frame').value
+        self.show_ticks = bool(self.get_parameter('show_ticks').value)
 
         # ── Open Serial ───────────────────────────────────────────────────────
         try:
@@ -112,41 +100,29 @@ class ESP32BridgeNode(Node):
                 port=port, baudrate=baud,
                 timeout=1.0, write_timeout=1.0,
             )
-            # Arduino Uno resets on serial open (DTR) — wait for it to boot.
-            time.sleep(2.0)
+            time.sleep(2.0)           # wait for ESP32 DTR reset + boot message
             self.ser.reset_input_buffer()
             self.ser.reset_output_buffer()
             self.get_logger().info(
-                f'✓ SmallBot Arduino connected on {port} @ {baud} baud'
+                f'✓ SmallBot ESP32 connected on {port} @ {baud} baud'
             )
         except serial.SerialException as exc:
             self.get_logger().fatal(
                 f'✗ Cannot open {port}: {exc}\n'
-                '  Check: ls /dev/ttyUSB*  or  ls /dev/ttyACM*'
+                '  Check: ls /dev/ttyUSB*'
             )
             raise
 
         # ── Internal State ────────────────────────────────────────────────────
         self._lock = threading.Lock()
 
-        # Encoder snapshots (updated by reader thread from "E," lines)
-        self._ticks_l    = 0
-        self._ticks_r    = 0
-        self._prev_l     = 0
-        self._prev_r     = 0
-        self._enc_ready  = False
-        self._tick_log_count = 0
-
-        # Separate display tracking — NOT shared with odometry timer
-        # (avoids race where odom consumes deltas before display can show them)
-        self._disp_prev_l = 0
-        self._disp_prev_r = 0
-
-        # Stall detection: warn when wheel encoders show no movement
-        # while motor commands are active
-        self._stall_count_l = 0
-        self._stall_count_r = 0
-        self._STALL_WARN_THRESHOLD = 5  # warn after 5 consecutive zero-delta displays (~5 s)
+        # Encoder snapshots (updated by reader thread from "E:" lines)
+        self._ticks_l   = 0          # cumulative ticks, left
+        self._ticks_r   = 0          # cumulative ticks, right
+        self._prev_l    = 0
+        self._prev_r    = 0
+        self._enc_ready = False      # True after first E: packet
+        self._tick_log_count = 0     # throttle counter for terminal tick prints
 
         # Odometry pose
         self._x   = 0.0
@@ -169,31 +145,27 @@ class ESP32BridgeNode(Node):
         # ── Reader thread + publish timer ─────────────────────────────────────
         self._running = True
         self._reader  = threading.Thread(
-            target=self._serial_reader, daemon=True, name='arduino_reader'
+            target=self._serial_reader, daemon=True, name='esp32_reader'
         )
         self._reader.start()
 
         self.create_timer(1.0 / rate_hz, self._publish_odom)
 
         self.get_logger().info(
-            f'SmallBot Arduino bridge ready | '
+            f'SmallBot bridge ready | '
             f'wheel_circ={self.CIRC:.4f} m | base={self.L} m | '
             f'TPR L={self.TPR_L} R={self.TPR_R}'
         )
 
     # ──────────────────────────────────────────────────────────────────────────
-    #  /cmd_vel  →  "C:<v>,<omega>\n"  (Arduino PID firmware handles the rest)
+    #  /cmd_vel  →  "C:<v>,<omega>\n"
     # ──────────────────────────────────────────────────────────────────────────
     def _cmd_cb(self, msg: Twist):
-        """Forward /cmd_vel as velocity command to Arduino PID firmware."""
-        # Apply direction correction: the physical motor wiring may make
-        # positive v move the robot backward, so we negate v here.
-        # linear_x_sign = -1.0 → invert  (default — fixes Nav2 going backward)
-        # linear_x_sign = +1.0 → pass through unchanged
-        v     = float(msg.linear.x) * self.linear_x_sign
-        omega = float(msg.angular.z) * self.angular_z_sign
+        """Forward /cmd_vel as velocity command to ESP32 PID firmware."""
+        v     = float(msg.linear.x)
+        omega = float(msg.angular.z)
 
-        # The Arduino firmware computes differential drive internally:
+        # The ESP32 firmware computes differential drive internally:
         #   wheel_speed_L = v - omega * (WHEEL_BASE / 2)
         #   wheel_speed_R = v + omega * (WHEEL_BASE / 2)
         cmd = f'C:{v:.4f},{omega:.4f}\n'
@@ -215,7 +187,7 @@ class ESP32BridgeNode(Node):
             self._last_cmd_t = time.monotonic()
 
     def _send_stop(self):
-        """Send zero-velocity command to Arduino PID firmware."""
+        """Send zero-velocity command to ESP32."""
         try:
             self.ser.write(b'C:0.0000,0.0000\n')
         except serial.SerialException:
@@ -249,89 +221,54 @@ class ESP32BridgeNode(Node):
 
     def _parse_line(self, line: str):
         """
-        Parse lines from Arduino:
-          "E,<left_ticks>,<right_ticks>"  — encoder report (10 Hz)
-          "CMD:<char>"                    — echo of last command received
-          Any other text is logged as debug info.
+        Parse lines from ESP32:
+          "E:<left_ticks>,<right_ticks>"  — encoder report (20 Hz)
+          Any other text is logged as debug.
         """
-        # Encoder telemetry: format is "E,<left>,<right>"
-        if line.startswith('E,'):
-            parts = line[2:].split(',')
-            if len(parts) != 2:
-                self.get_logger().warning(f'Malformed E, packet: {line!r}')
-                return
-            try:
-                l_ticks = int(parts[0])
-                r_ticks = int(parts[1])
-            except ValueError:
-                self.get_logger().warning(f'Bad tick values: {line!r}')
-                return
-
-            with self._lock:
-                if not self._enc_ready:
-                    self._prev_l    = l_ticks
-                    self._prev_r    = r_ticks
-                    self._enc_ready = True
-                    self.get_logger().info('✓ First E, packet — odometry active')
-
-                self._ticks_l = l_ticks
-                self._ticks_r = r_ticks
-
-            # Throttled terminal display — once per second (~10 packets)
-            if self.show_ticks:
-                self._tick_log_count += 1
-                if self._tick_log_count >= 10:
-                    self._tick_log_count = 0
-                    # Use DISPLAY-specific prev values (not shared with odom)
-                    delta_l = l_ticks - self._disp_prev_l
-                    delta_r = r_ticks - self._disp_prev_r
-                    self._disp_prev_l = l_ticks
-                    self._disp_prev_r = r_ticks
-                    spd_l = (delta_l / self.TPR_L) * self.CIRC * 10.0
-                    spd_r = (delta_r / self.TPR_R) * self.CIRC * 10.0
-                    self.get_logger().info(
-                        f'[TICKS]  L={l_ticks:+7d}  R={r_ticks:+7d}  '
-                        f'\u0394L={delta_l:+5d}  \u0394R={delta_r:+5d}  '
-                        f'vL={spd_l:+.3f} m/s  vR={spd_r:+.3f} m/s'
-                    )
-
-                    # Stall detection: warn if a wheel isn't moving
-                    # while commands are being sent
-                    cmd_active = (time.monotonic() - self._last_cmd_t) < self.cmd_to
-                    if cmd_active:
-                        if delta_l == 0:
-                            self._stall_count_l += 1
-                        else:
-                            self._stall_count_l = 0
-                        if delta_r == 0:
-                            self._stall_count_r += 1
-                        else:
-                            self._stall_count_r = 0
-
-                        if self._stall_count_l >= self._STALL_WARN_THRESHOLD:
-                            self.get_logger().warning(
-                                f'⚠ LEFT wheel stall detected! '
-                                f'No encoder ticks for {self._stall_count_l}s '
-                                f'while commands are active — check encoder wire on pin 2'
-                            )
-                        if self._stall_count_r >= self._STALL_WARN_THRESHOLD:
-                            self.get_logger().warning(
-                                f'⚠ RIGHT wheel stall detected! '
-                                f'No encoder ticks for {self._stall_count_r}s '
-                                f'while commands are active — check encoder wire on pin 3'
-                            )
-                    else:
-                        self._stall_count_l = 0
-                        self._stall_count_r = 0
+        if not line.startswith('E:'):
+            self.get_logger().info(f'ESP32: {line}')
             return
 
-        # Command echo from Arduino ("CMD:F", "CMD:S", etc.) — just log it
-        if line.startswith('CMD:'):
-            self.get_logger().debug(f'Arduino echo: {line}')
+        # Strip "E:" prefix then split on ','
+        body = line[2:]
+        parts = body.split(',')
+        if len(parts) != 2:
+            self.get_logger().warning(f'Malformed E: packet: {line!r}')
             return
 
-        # Anything else (startup messages, debug prints)
-        self.get_logger().info(f'Arduino: {line}')
+        try:
+            l_ticks = int(parts[0])
+            r_ticks = int(parts[1])
+        except ValueError:
+            self.get_logger().warning(f'Bad tick values: {line!r}')
+            return
+
+        with self._lock:
+            if not self._enc_ready:
+                self._prev_l    = l_ticks
+                self._prev_r    = r_ticks
+                self._enc_ready = True
+                self.get_logger().info('✓ First E: packet — odometry active')
+
+            self._ticks_l = l_ticks
+            self._ticks_r = r_ticks
+
+        # ── Throttled terminal display — once per second (every 20 packets) ──
+        if self.show_ticks:
+            self._tick_log_count += 1
+            if self._tick_log_count >= 20:
+                self._tick_log_count = 0
+                # Use _prev_l/_prev_r which were set before this packet
+                delta_l = l_ticks - self._prev_l
+                delta_r = r_ticks - self._prev_r
+                # Approximate speed: delta ticks in last ~1 s
+                spd_l = (delta_l / self.TPR_L) * self.CIRC * 20.0
+                spd_r = (delta_r / self.TPR_R) * self.CIRC * 20.0
+                self.get_logger().info(
+                    f'[TICKS]  L={l_ticks:+7d}  R={r_ticks:+7d}  '
+                    f'\u0394L={delta_l:+5d}  \u0394R={delta_r:+5d}  '
+                    f'vL={spd_l:+.3f} m/s  vR={spd_r:+.3f} m/s'
+                )
 
     # ──────────────────────────────────────────────────────────────────────────
     #  Odometry timer
@@ -363,10 +300,9 @@ class ESP32BridgeNode(Node):
             return
 
         # ── Differential drive kinematics ─────────────────────────────────────
-        # Apply the same sign correction to encoder distances so that the
-        # odometry pose tracks the physical forward direction correctly.
-        dist_l = (delta_l / self.TPR_L) * self.CIRC * self.linear_x_sign
-        dist_r = (delta_r / self.TPR_R) * self.CIRC * self.linear_x_sign
+        # Each wheel has its own measured TPR  →  use separate conversions
+        dist_l = (delta_l / self.TPR_L) * self.CIRC
+        dist_r = (delta_r / self.TPR_R) * self.CIRC
 
         ds   = (dist_r + dist_l) / 2.0      # linear displacement
         dyaw = (dist_r - dist_l) / self.L   # heading change

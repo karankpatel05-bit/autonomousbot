@@ -39,9 +39,9 @@ def generate_launch_description():
                               description='USB port for RPLidar A1M8'),
         DeclareLaunchArgument('esp32_port',      default_value='/dev/ttyUSB1',
                               description='USB port for ESP32 SmallBot'),
-        DeclareLaunchArgument('wheel_diameter',  default_value='0.150',
-                              description='Wheel diameter (m)'),
-        DeclareLaunchArgument('wheel_base',      default_value='0.400',
+        DeclareLaunchArgument('wheel_diameter',  default_value='0.043',
+                              description='Wheel diameter (m) — 43 mm N20 wheel'),
+        DeclareLaunchArgument('wheel_base',      default_value='0.140',
                               description='Distance between wheels (m)'),
         DeclareLaunchArgument('tpr_l',           default_value='349.0',
                               description='Ticks/rev LEFT wheel (measured)'),
@@ -73,34 +73,34 @@ def generate_launch_description():
         # one and cause TF flicker / incorrect odometry.
 
         # ── 3. Static TF: base_footprint → laser ─────────────────────────────
-        # z=0.305 — LiDAR is mounted 305 mm above robot base (new robot height).
+        # Adjust z=0.1 if LiDAR is mounted 10 cm above robot base.
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
             name='static_tf_base_laser',
             output='screen',
-            arguments=['0.0','0.0','0.305','0','0','0','1','base_footprint','laser'],
+            arguments=['0.0','0.0','0.1','0','0','0','1','base_footprint','laser'],
         ),
 
         # ── 3a. Static TF: base_footprint → left_wheel ──────────────────────
-        # Y = +wheel_base/2 = +0.200 m  (left side, wheel centre at body edge)
-        # Z = -wheel_radius  = -0.0215 m (wheel centre below base_footprint)
+        # Y = +wheel_base/2 = +0.070 m  (left side of robot)
+        # Z = -wheel_radius  = -0.0215 m (wheel centre is below base_footprint)
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
             name='static_tf_left_wheel',
             output='screen',
-            arguments=['0.0','0.200','-0.0215','0','0','0','1','base_footprint','left_wheel'],
+            arguments=['0.0','0.070','-0.0215','0','0','0','1','base_footprint','left_wheel'],
         ),
 
         # ── 3b. Static TF: base_footprint → right_wheel ─────────────────────
-        # Y = -wheel_base/2 = -0.200 m  (right side, wheel centre at body edge)
+        # Y = -wheel_base/2 = -0.070 m  (right side of robot)
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
             name='static_tf_right_wheel',
             output='screen',
-            arguments=['0.0','-0.200','-0.0215','0','0','0','1','base_footprint','right_wheel'],
+            arguments=['0.0','-0.070','-0.0215','0','0','0','1','base_footprint','right_wheel'],
         ),
 
         # ── 4. SLAM Toolbox (delayed 3 s) ─────────────────────────────────────
