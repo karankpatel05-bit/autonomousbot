@@ -137,6 +137,17 @@ class ESP32BridgeNode(Node):
         self._enc_ready  = False
         self._tick_log_count = 0
 
+        # Separate display tracking — NOT shared with odometry timer
+        # (avoids race where odom consumes deltas before display can show them)
+        self._disp_prev_l = 0
+        self._disp_prev_r = 0
+
+        # Stall detection: warn when wheel encoders show no movement
+        # while motor commands are active
+        self._stall_count_l = 0
+        self._stall_count_r = 0
+        self._STALL_WARN_THRESHOLD = 5  # warn after 5 consecutive zero-delta displays (~5 s)
+
         # Odometry pose
         self._x   = 0.0
         self._y   = 0.0
@@ -271,8 +282,11 @@ class ESP32BridgeNode(Node):
                 self._tick_log_count += 1
                 if self._tick_log_count >= 10:
                     self._tick_log_count = 0
-                    delta_l = l_ticks - self._prev_l
-                    delta_r = r_ticks - self._prev_r
+                    # Use DISPLAY-specific prev values (not shared with odom)
+                    delta_l = l_ticks - self._disp_prev_l
+                    delta_r = r_ticks - self._disp_prev_r
+                    self._disp_prev_l = l_ticks
+                    self._disp_prev_r = r_ticks
                     spd_l = (delta_l / self.TPR_L) * self.CIRC * 10.0
                     spd_r = (delta_r / self.TPR_R) * self.CIRC * 10.0
                     self.get_logger().info(
@@ -280,6 +294,35 @@ class ESP32BridgeNode(Node):
                         f'\u0394L={delta_l:+5d}  \u0394R={delta_r:+5d}  '
                         f'vL={spd_l:+.3f} m/s  vR={spd_r:+.3f} m/s'
                     )
+
+                    # Stall detection: warn if a wheel isn't moving
+                    # while commands are being sent
+                    cmd_active = (time.monotonic() - self._last_cmd_t) < self.cmd_to
+                    if cmd_active:
+                        if delta_l == 0:
+                            self._stall_count_l += 1
+                        else:
+                            self._stall_count_l = 0
+                        if delta_r == 0:
+                            self._stall_count_r += 1
+                        else:
+                            self._stall_count_r = 0
+
+                        if self._stall_count_l >= self._STALL_WARN_THRESHOLD:
+                            self.get_logger().warning(
+                                f'⚠ LEFT wheel stall detected! '
+                                f'No encoder ticks for {self._stall_count_l}s '
+                                f'while commands are active — check encoder wire on pin 2'
+                            )
+                        if self._stall_count_r >= self._STALL_WARN_THRESHOLD:
+                            self.get_logger().warning(
+                                f'⚠ RIGHT wheel stall detected! '
+                                f'No encoder ticks for {self._stall_count_r}s '
+                                f'while commands are active — check encoder wire on pin 3'
+                            )
+                    else:
+                        self._stall_count_l = 0
+                        self._stall_count_r = 0
             return
 
         # Command echo from Arduino ("CMD:F", "CMD:S", etc.) — just log it
