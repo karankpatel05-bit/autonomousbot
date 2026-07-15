@@ -73,7 +73,7 @@ class ESP32BridgeNode(Node):
         super().__init__('esp32_bridge')
 
         # ── Parameters ────────────────────────────────────────────────────────
-        self.declare_parameter('port',           '/dev/ttyUSB0')
+        self.declare_parameter('port',           '/dev/ttyUSB1')
         self.declare_parameter('baud',           115200)
         self.declare_parameter('wheel_diameter', 0.043)
         self.declare_parameter('wheel_base',     0.400)   # 400 mm — new robot

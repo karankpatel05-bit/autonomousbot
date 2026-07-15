@@ -4,15 +4,15 @@ esp32_bridge.launch.py  —  SmallBot Arduino USB serial bridge
 
 Protocol:
   RPI  → Arduino :  Single char commands: 'F', 'B', 'L', 'R', 'S', '1'-'5'
-  Arduino → RPI  :  "E,<left>,<right>\\n"  (encoder ticks @ 10 Hz)
+  Arduino → RPI  :  "E,<left>,<right>\n"  (encoder ticks @ 10 Hz)
 
 Usage:
-  ros2 launch esp32_bridge esp32_bridge.launch.py [arduino_port:=/dev/ttyUSB0]
+  ros2 launch esp32_bridge esp32_bridge.launch.py [arduino_port:=/dev/ttyUSB1]
 
 Override measured wheel parameters if needed:
-  ros2 launch esp32_bridge esp32_bridge.launch.py \\
-      arduino_port:=/dev/ttyUSB0 \\
-      tpr_l:=349.0 tpr_r:=362.0 \\
+  ros2 launch esp32_bridge esp32_bridge.launch.py \
+      arduino_port:=/dev/ttyUSB1 \
+      tpr_l:=349.0 tpr_r:=362.0 \
       wheel_diameter:=0.043 wheel_base:=0.400
 
 Direction fix (default -1.0 corrects Nav2 forward → robot backward bug):
@@ -29,7 +29,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
 
     args = [
-        DeclareLaunchArgument('arduino_port',    default_value='/dev/ttyUSB0',
+        DeclareLaunchArgument('arduino_port',    default_value='/dev/ttyUSB1',
                               description='USB port for Arduino Uno motor base'),
         DeclareLaunchArgument('baud',            default_value='115200',
                               description='Serial baud rate'),
