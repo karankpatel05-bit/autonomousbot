@@ -1,7 +1,9 @@
 /*
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  SMALLBOT — ESP32 Firmware  (PID + DEBOUNCED ENCODERS)              ║
+ * ║  SMALLBOT — ESP32 Firmware  (Full PID + STICTION RAMP)              ║
  * ╠══════════════════════════════════════════════════════════════════════╣
+ * ║  Full P+I+D controller with speed-adaptive stiction compensation   ║
+ * ║  50 Hz control loop for fast response                               ║
  * ║  RISING edge interrupts with 200µs debounce for noisy pins 34/35   ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
@@ -47,6 +49,12 @@ const int   PWM_MIN     = 55;
 const int   PWM_MAX     = 255;     
 
 // ═══════════════════════════════════════════════════════════════════════
+//  STICTION COMPENSATION PARAMETERS
+// ═══════════════════════════════════════════════════════════════════════
+const float STICTION_PWM    = 140.0f;   // Base PWM to overcome static friction
+const float STICTION_FADE   = 0.10f;    // Speed (m/s) at which stiction fully fades out
+
+// ═══════════════════════════════════════════════════════════════════════
 //  ENCODER STATE  (with ISR debouncing for noisy pins 34/35)
 // ═══════════════════════════════════════════════════════════════════════
 volatile int32_t enc_left  = 0;
@@ -72,13 +80,10 @@ void IRAM_ATTR isrRight() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  PID CONTROLLER VARIABLES
+//  PID CONTROLLER VARIABLES (Full P + I + D)
 // ═══════════════════════════════════════════════════════════════════════
-const float Kp = 1.5f; 
-const float Ki = 0.2f; 
-
-float error_sum_L = 0;
-float error_sum_R = 0;
+float error_sum_L = 0,  error_sum_R = 0;    // Integral accumulators
+float prev_error_L = 0, prev_error_R = 0;   // Previous error for D term
 
 float target_speed_L = 0; // m/s
 float target_speed_R = 0; // m/s
@@ -125,6 +130,49 @@ void setTargetVelocities(float v, float omega) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+//  STICTION COMPENSATION — fades from full at standstill to zero at speed
+// ═══════════════════════════════════════════════════════════════════════
+float computeStiction(float target_spd, float current_spd) {
+  if (abs(target_spd) < 0.001f) return 0.0f;
+  
+  // Fade factor: 1.0 at standstill, 0.0 when |current_spd| >= STICTION_FADE
+  float fade = 1.0f - constrain(abs(current_spd) / STICTION_FADE, 0.0f, 1.0f);
+  
+  // Apply stiction in the direction of the target
+  return (target_spd > 0) ? (STICTION_PWM * fade) : (-STICTION_PWM * fade);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  PID COMPUTE — Full P + I + D with anti-windup
+// ═══════════════════════════════════════════════════════════════════════
+float computePID(float target_spd, float current_spd, float dt,
+                 float &error_sum, float &prev_error) {
+  float error = target_spd - current_spd;
+  
+  // ── Proportional ──
+  float P = 150.0f * error;
+  
+  // ── Integral with adaptive gain ──
+  // Boost integral when stalled (not moving) for faster ramp-up
+  float ki_gain = (abs(current_spd) < 0.01f) ? 300.0f : 100.0f;
+  error_sum += error * ki_gain * dt;
+  // Anti-windup clamp
+  error_sum = constrain(error_sum, -200.0f, 200.0f);
+  float I = error_sum;
+  
+  // ── Derivative (dampen oscillations) ──
+  float D = 0.0f;
+  if (dt > 0.0f) {
+    D = 20.0f * (error - prev_error) / dt;
+    // Clamp derivative to prevent spikes from encoder noise
+    D = constrain(D, -100.0f, 100.0f);
+  }
+  prev_error = error;
+  
+  return P + I + D;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 //  SERIAL PARSING & COMMAND TIMEOUT
 // ═══════════════════════════════════════════════════════════════════════
 uint32_t last_cmd_ms = 0;
@@ -146,7 +194,8 @@ void parseSerial() {
         }
       } else if (serial_buf.length() > 0 && serial_buf[0] == 'R') {
         noInterrupts(); enc_left = 0; enc_right = 0; interrupts();
-        error_sum_L = 0; error_sum_R = 0; 
+        error_sum_L = 0; error_sum_R = 0;
+        prev_error_L = 0; prev_error_R = 0;
         Serial.println(">>> ENCODERS & PID RESET <<<");
       }
       serial_buf = "";
@@ -183,13 +232,17 @@ void setup() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  MAIN CONTROL LOOP (20 Hz)
+//  MAIN CONTROL LOOP (50 Hz — fast response for Nav2)
 // ═══════════════════════════════════════════════════════════════════════
 uint32_t last_loop_ms = 0;
-const uint32_t LOOP_PERIOD_MS = 50; 
+const uint32_t LOOP_PERIOD_MS = 20;   // 50 Hz (was 50ms / 20 Hz)
 
 int32_t prev_ticks_L = 0;
 int32_t prev_ticks_R = 0;
+
+// Encoder report counter — send E: at 20 Hz (every 2.5 PID cycles)
+uint8_t enc_report_counter = 0;
+const uint8_t ENC_REPORT_INTERVAL = 2;  // report every 2 loops ≈ 25 Hz
 
 void loop() {
   parseSerial();
@@ -218,44 +271,39 @@ void loop() {
   float current_speed_L = (delta_L / TPR_L) * WHEEL_CIRC / dt;
   float current_speed_R = (delta_R / TPR_R) * WHEEL_CIRC / dt;
 
+  // ── LEFT WHEEL ──────────────────────────────────────────────────────
   if (abs(target_speed_L) < 0.001) {
     applyPower(L_IN1, L_IN2, LEDC_CH_L, 0);
-    error_sum_L = 0; 
+    error_sum_L = 0;
+    prev_error_L = 0;
   } else {
-    float error_L = target_speed_L - current_speed_L;
-    
-    // Adaptively increase integral term faster if not moving
-    float dynamic_Ki = (abs(current_speed_L) < 0.01) ? 300.0f : 100.0f;
-    error_sum_L += error_L * dynamic_Ki * dt;
-    error_sum_L = constrain(error_sum_L, -200.0f, 200.0f);
-    
-    // Start from 140 PWM and add PID
-    float stiction_L = (target_speed_L > 0) ? 140.0f : -140.0f;
-    float pwm_L = stiction_L + (150.0f * error_L) + error_sum_L;
-    
+    float stiction = computeStiction(target_speed_L, current_speed_L);
+    float pid = computePID(target_speed_L, current_speed_L, dt,
+                           error_sum_L, prev_error_L);
+    float pwm_L = stiction + pid;
     applyPower(L_IN1, L_IN2, LEDC_CH_L, (int)pwm_L);
   }
 
+  // ── RIGHT WHEEL ─────────────────────────────────────────────────────
   if (abs(target_speed_R) < 0.001) {
     applyPower(R_IN3, R_IN4, LEDC_CH_R, 0);
-    error_sum_R = 0; 
+    error_sum_R = 0;
+    prev_error_R = 0;
   } else {
-    float error_R = target_speed_R - current_speed_R;
-    
-    // Adaptively increase integral term faster if not moving
-    float dynamic_Ki = (abs(current_speed_R) < 0.01) ? 300.0f : 100.0f;
-    error_sum_R += error_R * dynamic_Ki * dt;
-    error_sum_R = constrain(error_sum_R, -200.0f, 200.0f);
-    
-    // Start from 140 PWM and add PID
-    float stiction_R = (target_speed_R > 0) ? 140.0f : -140.0f;
-    float pwm_R = stiction_R + (150.0f * error_R) + error_sum_R;
-    
+    float stiction = computeStiction(target_speed_R, current_speed_R);
+    float pid = computePID(target_speed_R, current_speed_R, dt,
+                           error_sum_R, prev_error_R);
+    float pwm_R = stiction + pid;
     applyPower(R_IN3, R_IN4, LEDC_CH_R, (int)pwm_R);
   }
 
-  Serial.print("E:");
-  Serial.print(ticks_L);
-  Serial.print(',');
-  Serial.println(ticks_R);
+  // ── Report encoder ticks at ~25 Hz (not every 50 Hz loop) ──────────
+  enc_report_counter++;
+  if (enc_report_counter >= ENC_REPORT_INTERVAL) {
+    enc_report_counter = 0;
+    Serial.print("E:");
+    Serial.print(ticks_L);
+    Serial.print(',');
+    Serial.println(ticks_R);
+  }
 }
