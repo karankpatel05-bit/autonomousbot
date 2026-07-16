@@ -52,7 +52,8 @@ const int   PWM_MAX     = 255;
 //  STICTION COMPENSATION PARAMETERS
 // ═══════════════════════════════════════════════════════════════════════
 const float STICTION_PWM    = 140.0f;   // Base PWM to overcome static friction
-const float STICTION_FADE   = 0.10f;    // Speed (m/s) at which stiction fully fades out
+const float STICTION_FADE   = 0.015f;   // Speed (m/s) at which stiction fully fades out
+                                         // Very low = only active when truly stalled
 
 // ═══════════════════════════════════════════════════════════════════════
 //  ENCODER STATE  (with ISR debouncing for noisy pins 34/35)
@@ -149,27 +150,31 @@ float computePID(float target_spd, float current_spd, float dt,
                  float &error_sum, float &prev_error) {
   float error = target_spd - current_spd;
   
+  // ── Feedforward: estimate PWM from target speed ──
+  // This gives the PID a head start instead of relying on stiction
+  float FF = target_spd * 400.0f;
+  
   // ── Proportional ──
-  float P = 150.0f * error;
+  float P = 80.0f * error;
   
   // ── Integral with adaptive gain ──
   // Boost integral when stalled (not moving) for faster ramp-up
-  float ki_gain = (abs(current_spd) < 0.01f) ? 300.0f : 100.0f;
+  float ki_gain = (abs(current_spd) < 0.01f) ? 200.0f : 80.0f;
   error_sum += error * ki_gain * dt;
   // Anti-windup clamp
-  error_sum = constrain(error_sum, -200.0f, 200.0f);
+  error_sum = constrain(error_sum, -150.0f, 150.0f);
   float I = error_sum;
   
   // ── Derivative (dampen oscillations) ──
   float D = 0.0f;
   if (dt > 0.0f) {
-    D = 20.0f * (error - prev_error) / dt;
+    D = 15.0f * (error - prev_error) / dt;
     // Clamp derivative to prevent spikes from encoder noise
-    D = constrain(D, -100.0f, 100.0f);
+    D = constrain(D, -80.0f, 80.0f);
   }
   prev_error = error;
   
-  return P + I + D;
+  return FF + P + I + D;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
