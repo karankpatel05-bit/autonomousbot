@@ -192,18 +192,7 @@ def generate_launch_description():
             parameters=[nav2_yaml],
         ),
 
-        # ── 11. Velocity Smoother — smooths cmd_vel for less jerky motion ────
-        Node(
-            package='nav2_velocity_smoother',
-            executable='velocity_smoother',
-            name='velocity_smoother',
-            output='screen',
-            parameters=[nav2_yaml],
-            remappings=[
-                ('cmd_vel', '/cmd_vel'),
-                ('cmd_vel_smoothed', '/cmd_vel_smoothed'),
-            ],
-        ),
+        # ── 11. (Velocity smoother removed — ESP32 PID handles smooth accel) ─
 
         # ── 12. Nav2 Lifecycle Manager ───────────────────────────────────────
         Node(

@@ -12,17 +12,17 @@ amcl:
   ros__parameters:
     use_sim_time: false
 
-    # Particle filter — more particles for better long-distance localization
-    min_particles: 500
-    max_particles: 3000
+    # Particle filter
+    min_particles: 200
+    max_particles: 2000
     alpha_slow: 0.001
     alpha_fast: 0.1
     pf_err: 0.05
     pf_z: 0.99
 
-    # Update thresholds — update more frequently for small bot
-    update_min_d: 0.02        # 2 cm linear (was 5 cm)
-    update_min_a: 0.08        # ~4.5 deg angular (was ~6 deg)
+    # Update thresholds — trigger update after this much motion
+    update_min_d: 0.05        # 5 cm linear
+    update_min_a: 0.1         # ~6 deg angular
     resample_interval: 1
 
     # Laser model
@@ -33,11 +33,10 @@ amcl:
     max_beams: 60
 
     # Odometry model — differential drive
-    # Higher alpha = more noise expected from small wheels with encoder drift
     odom_model_type: diff-corrected
     robot_model_type: nav2_amcl::DifferentialMotionModel
-    alpha1: 0.3               # rotation noise from rotation (was 0.2)
-    alpha2: 0.3               # rotation noise from translation (was 0.2)
+    alpha1: 0.2               # rotation noise from rotation
+    alpha2: 0.2               # rotation noise from translation
     alpha3: 0.2               # translation noise from translation
     alpha4: 0.2               # translation noise from rotation
     alpha5: 0.1               # translation noise (omnidirectional only)
@@ -130,8 +129,8 @@ controller_server:
 
     progress_checker:
       plugin: nav2_controller::SimpleProgressChecker
-      required_movement_radius: 0.05  # must move at least 5 cm (was 3 cm)
-      movement_time_allowance: 30.0   # within 30 seconds (was 15 — more time for turns)
+      required_movement_radius: 0.03  # must move at least 3 cm
+      movement_time_allowance: 15.0   # within 15 seconds
 
     goal_checker:
       plugin: nav2_controller::SimpleGoalChecker
@@ -143,27 +142,27 @@ controller_server:
     FollowPath:
       plugin: dwb_core::DWBLocalPlanner
       debug_trajectory_details: false
-      # Velocity limits — tuned for SmallBot long-distance
+      # Velocity limits — tuned for SmallBot
       min_vel_x: 0.0                  # MUST be <= 0.0 so the bot can stop!
       min_vel_y: 0.0
       max_vel_x: 0.22                 # max forward speed m/s
       max_vel_y: 0.0                  # diff drive — no strafe
-      max_vel_theta: 1.0              # max rotation rad/s (was 1.5 — less aggressive turns)
-      min_speed_xy: 0.04              # Minimum movement speed
+      max_vel_theta: 1.5              # max rotation rad/s
+      min_speed_xy: 0.04              # Match min_vel_x
       max_speed_xy: 0.22
       min_speed_theta: 0.2            # Minimum rotational speed
-      # Acceleration limits — gentler for small wheels to prevent slip
-      acc_lim_x: 0.3                  # (was 0.5) — less wheel slip on smooth floors
+      # Acceleration limits
+      acc_lim_x: 0.5
       acc_lim_y: 0.0
-      acc_lim_theta: 1.5              # (was 2.0) — smoother turns
-      decel_lim_x: -0.3              # (was -0.5) — gentler braking
+      acc_lim_theta: 2.0
+      decel_lim_x: -0.5
       decel_lim_y: 0.0
-      decel_lim_theta: -1.5           # (was -2.0)
-      # Trajectory simulation — look further ahead for long-distance paths
+      decel_lim_theta: -2.0
+      # Trajectory simulation
       vx_samples: 20
       vy_samples: 1                   # diff drive
       vtheta_samples: 20
-      sim_time: 2.5                   # (was 1.5) — plan further ahead
+      sim_time: 1.5
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.5
@@ -179,7 +178,7 @@ controller_server:
         - PathAlign
         - PathDist
         - GoalDist
-      BaseObstacle.scale: 0.05        # (was 0.02) — more cautious near obstacles
+      BaseObstacle.scale: 0.02
       PathAlign.scale: 32.0
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 24.0
@@ -254,10 +253,10 @@ velocity_smoother:
     smoothing_frequency: 20.0         # match ESP32 loop rate
     scale_velocities: false
     feedback: OPEN_LOOP
-    max_velocity:     [0.22, 0.0, 1.0]
-    min_velocity:     [-0.22, 0.0, -1.0]
-    max_accel:        [0.3, 0.0, 1.5]   # Match controller_server acc_lim
-    max_decel:        [-0.3, 0.0, -1.5]  # Match controller_server decel_lim
+    max_velocity:     [0.22, 0.0, 1.5]
+    min_velocity:     [-0.22, 0.0, -1.5]
+    max_accel:        [0.5, 0.0, 2.0]
+    max_decel:        [-0.5, 0.0, -2.0]
     odom_topic: /odom
     odom_duration: 0.1
     deadband_velocity: [0.02, 0.0, 0.1] # Snap microscopic velocities to 0 to prevent jitter

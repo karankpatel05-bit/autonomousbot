@@ -379,14 +379,8 @@ def main(args=None):
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
-    except Exception:
-        # Catch ExternalShutdownException and other signal-related exceptions
-        pass
     finally:
-        try:
-            node.destroy_node()
-        except Exception:
-            pass
+        node.destroy_node()
         try:
             rclpy.shutdown()
         except Exception:
